@@ -1,0 +1,908 @@
+---
+title: "Structural analysis of genetic data using the `R` package `ggene`"
+author: | 
+  | Jean-Pierre Rossi & Carole Kerdelhué
+  | CBGP - INRA Montpellier http://www6.montpellier.inra.fr/cbgp
+  | ggene.package@gmail.com
+  | For `ggene` version 1.0.2
+date: "`r Sys.Date()`"
+fontsize: 12pt
+graphics: yes
+output:
+   pdf_document:
+     fig_caption: no
+     fig_height: 4
+     fig_width: 5
+     number_sections: yes
+     toc: yes
+     toc_depth: 5
+     includes:
+         in_header: preamble.tex
+bibliography: ggene2.bib
+vignette: >
+ %rmarkdown::html_vignette
+  %\VignetteIndexEntry{ggene_introduction}
+  %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::rmarkdown}
+---
+ \newpage
+ 
+# Forwords
+This document is an attempt at giving a quick overview of the `R` package `ggene`. The package was designed to provide tools to analyse microsatellite data recorded for geolocated individuals. `ggene` is based on spatially explicit statistical methods and mostly relies on geostatistics _i.e._ variography. The package allows variogram analysis following Wagner et al. [-@wagner2005variogram] and provides additional tools such as variogram maps. Readers should refer to the numerous textbooks dedicated to geostatistics amongst which are _Geostatistics for natural resources evaluation_ [@goovaerts1997geostatistics] and _Applied geostatistics_ [@isaaks1989applied]. For an introduction to geostatitsics in `R`, readers should consult _Model-based geostatistics_ [@diggle2007model].  
+
+# Package Overview
+
+## Disclaimer
+`ggene` is delivered as it is and without any warranty. If you find a bug, or if you have a suggestion to improve the package, please contact us at \href{ggene.package@gmail.com}{ggene.package@gmail.com}.
+
+## Funding
+The INRA department EFPA provided financial support to a very early version of the package `ggene`. We further benefited from the financial support of the INRA métaprogramme SMaCH (Sustainable  Management  of Crop Health) through the project COPACABANA.
+
+## Package functions
+The table below lists the main functions available from `ggene`. 
+ 
+| name | topic | description |
+|------|---------|------|
+|`tab2geo`|    data input   |    creates a `ggene` object  (useful for haploid organisms) |
+|`gene2geo`|   data input   |   creates a `ggene` object  from a `genind` object  |
+|`subsetdata`|     data management   |     subsets a `ggene` object by point-and-click|
+|`distlag`|     utility   |     creates customized distance intervals| 
+| `genocount`|   utility      |   computes the number of different genotypes in a dataset  |
+| `genoweight` |    utility    |   computes the weights associated to the different genotypes  |
+| `svariog` |    analysis    |   variography   |
+| `svarmap` |    analysis    |   variography   |
+| `varioWeight` |    analysis    |   variography   |
+| `randsvariog` |    analysis    |   variography   |
+| `fitsvariog` |    analysis    |   variography   |
+
+As usual in the `R` environment, users can access a specific help page by entering `?name of the function` in the R console. 
+Typing 
+```{r, eval=FALSE}
+?ggene
+```
+provides an overview of the main package features.
+ 
+## Datasets available from `ggene`
+
+Readers are referred to a dedicated vignette entitled `ggene_datasets` accessible by typing `vignette("ggene_datasets")` in the R console.
+
+# Data management
+## Data inputs
+Data are imported and converted to an object of class `ggene` using 2 functions, namely `gene2geo` and `tab2geo`. 
+
+- `gene2geo` uses an object of `genind` class from the package `adegenet` [@Jombart2008] and a data frame containing the spatial coordinates of the corresponding individuals. 
+
+- `tab2geo` operates in a similar way but requires a simple data frame for the genetic data instead of a `genind` object. `tab2geo` is intended to handle haploid data which cannot be easily stored as a `genind` object (see the manual of `adegenet`). Note that missing data can be handled using the function `scaleGen` available in the package `adegenet`.
+
+
+
+The chunk of code below shows how to read both coordinates and microsatellite data for an haploid dataset.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(ggene)
+```
+
+```{r, fig.align="center"}
+# read genetic data
+sim <- read.csv(system.file("extdata/sim_01.csv", package="ggene"),
+                header=FALSE)
+# read spatial coordinates
+xy.sim <- read.csv(system.file("extdata/xysim_01.csv", package="ggene"),
+                   header=FALSE)
+# create a ggene object
+dat.sim <- tab2geo(X=sim, coord=xy.sim)
+
+str(dat.sim)
+```
+
+The function `gene2geo` operates the same way but relies on a `genind` object. `genind` objects are created with the package `adegenet` from various data input formats such as `genepop` or `genetix` (see the documentation of the package for details).  **Note that `ggene` comes with no function allowing to read data directly from files.**
+
+Here is an example where we firstly read the genetic data from a file in `genepop` format :
+
+```{r, warning=FALSE, message=FALSE}
+library(adegenet)
+dat <- read.genepop(system.file("extdata/sim_03.gen", package="ggene"),
+	ncode = 3)
+```
+
+The resulting object has various characteristics:
+
+```{r, fig.align="center"}
+dat
+```
+
+There are 625 individuals. 
+
+Let’s now read the geographic coordinates :
+
+```{r, fig.align="center"}
+xy <- read.csv(system.file("extdata/xysim_01.csv", package="ggene"),
+               header=FALSE)
+dim(xy)
+```
+
+The function `head` displays the first records. There are 2 columns corresponding to abscissa and ordinates, x and y. It is important to check this information since the coordinate file may contain point labels or additional coordinate systems and other information. It is important that users select the correct coordinate system and for that reason, checking the content of the data file is necessary. In addition, it is assumed that coordinates are provided in cartesian system rather that in a longitude/latitude system. **Readers are referred to Bivand et al. [-@Bivand2008] for details.**
+
+```{r, fig.align="center"}
+head(xy)
+```
+
+At this point, we can plot the spatial distribution of individuals and visualise the sampling scheme: 
+
+```{r, fig.align="center"}
+plot(xy[,1],xy[,2], xlab="x coordinates", ylab="y coordinates")
+```
+
+We can create a `ggene` object using `gene2geo`:
+
+```{r, fig.align="center"}
+library(ggene)
+data <- gene2geo(X=dat, coord=xy)
+class(data)
+```
+
+
+## Data subsets
+In some cases, one may wish to analyse a subset of the dataset _e.g._ one patch of individuals. The function `subsetdata` allows to extract subsets of a dataset using a polygon created by point-and-click in the display. 
+
+```{r,eval=FALSE}
+data(sim02)
+sub <- subsetdata(X=sim02, col="blue")
+to add points: click left mouse button in window
+       to exit: click middle mouse button
+ [The last point should NOT repeat the first point]
+```
+
+A plot of the individuals location is displayed and user is invited to create a polygon defining the group of points to be extracted by clicking in the display (figure \ref{sub01} page \pageref{sub01}).
+
+\begin{figure}
+\centering
+\fbox{\includegraphics[width=10cm]{fig/sub01.png}}
+\caption[\texttt{subsetdata}]{Subsetting a dataset using the function \texttt{subsetdata}: screenshot of the polygon definition.}
+ \label{sub01}
+\end{figure}
+
+
+The resulting object has 4 slots, the first one being the `ggene` object corresponding to the subset of data.
+
+```{r,eval=FALSE}
+class(sub[[1]])
+[1] "ggene"
+```
+
+Sequential extractions are possible by launching the function with previous extracts as a list of arguments (`L`).
+
+```{r,eval=FALSE}
+> sub2 <- subsetdata(X=sim02, col="blue", L=list(sub))
+to add points: click left mouse button in window
+       to exit: click middle mouse button
+ [The last point should NOT repeat the first point]
+```
+
+The definition of the second polygon is done while the first polygon (`sub`) appears in the plot (figure \ref{sub02} page \pageref{sub02}).
+
+\begin{figure}
+\centering
+\fbox{\includegraphics[width=10cm]{fig/sub02.png}}
+\caption[\texttt{subsetdata}]{Subsetting a dataset using the function \texttt{subsetdata}: screenshot of a second polygon definition. Note that the first polygon \texttt{"sub"} appears in the plot to facilitate the positioning a the new polygon.}
+ \label{sub02}
+\end{figure}
+
+
+## Superimposed individuals
+Several individuals may be collected at the same site *i.e.* their coordinates are similar. This situation is not uncommon in biology while it is unlikely in geology and soil science where a given spatial location supports only one sample. Duplicated coordinates may also point out an error in the data file. For that reason, `ggene` will issue a warning message when a data set contains points/individuals with duplicated coordinates. This occurs when you read the raw datasets by means of functions `tab2geo` or `gene2geo`.
+
+For instance :
+
+```{r, fig.align="center"}
+data(sim02)
+# forcing 3 duplicated sample locations
+sim02$coord[5,] <- sim02$coord[10,] <- sim02$coord[20,]
+# create a new ggene object with duplicate coordinates
+sim02bis <- tab2geo(X=sim02$tab, coord=sim02$coord)
+```       
+ 
+Duplicated coordinates cause no problem in variogram analysis except for directional variograms. The function `svariog` will issue a warning message when data contain duplicated coordinates but will run correctly in the case of omnidirectional variograms (in that case a bin will be added at the origin: see below). If you want to avoid any warning you can jitter point coordinates. This consists in slightly changing the coordinates and is of no consequence on the analysis outputs provided that the changes remain slight. Jittering the duplicated coordinates can be achieved using `jitterDupCoords` from package `geoR`.
+
+The following code chunk tests for the presence of duplicated coordinates:
+
+```{r, message=FALSE, fig.align="center"}
+library(geoR)
+# test for duplicated coordinates
+dup.coords(sim02bis$coord)
+```
+
+There are 3 duplicated coordinates.
+
+```{r, fig.align="center"}
+#Jitter coordinates
+coordbis <- jitter2d(sim02$coord[,], max=0.01)
+
+# test for duplicated coordinates
+dup.coords(coordbis$coord)
+```
+
+The coordinates have been slightly changed, resulting in no duplicate. Users should consult the help page of the function `jitter2d` and carefully evaluate the value to be given to the argument `max`.
+
+## Managing recurrent genotypes 
+
+The presence of repeated genotypes potentially affects the spatial structure and it may be necessary to account for this effect [@wagner2005variogram; @Werth2006; @dutech2008geostatistical]. This can be achieved by using a weighting matrix during the computations  [see @wagner2005variogram].
+
+`genocount` and `genoweight` are utilities for preparing such matrices of weights.  
+
+- `genocount` identifies and counts the repeated genotypes in a given dataset. The function returns a list of genotypes and a number that identifies each of them in the dataset. The output of `genocount` can be useful on its own but is primarily intended to feed the function `genoweight`.
+
+- `genoweight` computes the weighting matrix following Wagner et al. [-@wagner2005variogram] using the output of `genocount`.
+
+```{r, fig.align="center"}
+data(Wagner)
+count <- genocount(X=Wagner)
+count
+mat <- genoweight(X=Wagner,genotyp=count$vec)
+mat
+```
+
+The matrix of weights `mat` in the example above can be used to compute the weighted variogram using the function `varioWeight` (see details § 5.2.3).
+
+## Missing data (NAs)
+Missing data *i.e.* nuls alleles are not allowed and should be managed prior to data analysis. This can be achieved by removing either individuals and/or locus exhibiting missing data. Another solution is offered by the function `scaleGene` for the package `adegenet`. `scaleGene` allows to replace NAs by the mean allele frequency or by zero. In the present document and in all the examples provided in `ggene` we have removed the individuals exhibiting missing values.
+
+# Variograms in a nutshell
+
+## Semivariance & the variogram
+In geostatistics, spatial structures are usually assessed using the average dissimilarity between data separated by a vector $h$. The dissimilarity is measured by the _semivariance_ which is computed as half the average squared difference between the components of each data pair:
+
+\begin{equation}
+\hat{\gamma}(h)= \frac{1}{2n_h}\sum_{a \neq b}\chi_{ab}^{(h)}(x_a - x_b)^2
+\end{equation}
+
+where $x_a$ and $x_b$ are the values of the observed variable at sites $a$ and $b$, $h$ is the distance class, $n_h$ the number of individuals separated by a distance $h$ and $\chi_{ab}^{(h)}$ is the Kronecker weight. The Kronecker weight for a data pair $ab$ takes the value $\chi_{ab}^{(h)}=1$ if the pair  belongs to the distance interval $h$ and $\chi_{ab}^{(h)}=0$ otherwise. In this way, only the pairs of individuals $(a,b)$ within the distance class $h$ are taken into account in the calculation of $\hat{\gamma}(h)$. 
+
+The more alike are the individuals separated by $h$, the smaller $\hat{\gamma}(h)$ and _vice versa_. The plot of $\hat{\gamma}(h)$ against the separating distance $h$  is referred to as the _semi-variogram_ or _variogram_ for short. It represents the average rate of change of the similarity with distance. Its shape describes the pattern of spatial variation in terms of general form, scales and magnitude. In many cases, $\hat{\gamma}(h)$ increases with $h$ and reaches a plateau roughly equal to the sample variance. The distance $h$ for which $\hat{\gamma}(h)$  reaches the plateau is called the range of the variogram and corresponds to the distance at which individuals/sampling points can be considered as statistically independent [@goovaerts1997geostatistics; @isaaks1989applied].
+
+The features of the empirical variogram are conveniently summarized by fitting a theoretical model to the estimates of $\hat{\gamma}(h)$. Not all models that seem to fit can be used and only positive definite models are valid (_aka_ authorized functions). This question is beyond the scope of the present introduction and readers are referred to geostatistical textbooks such as Isaaks & Srivastava [-@isaaks1989applied] or Goovaerts [-@goovaerts1997geostatistics].
+Because positive definiteness is somewhat difficult to check, geostatisticians traditionally use a set of authorized functions that are known to meet the assumption of positive definiteness. Authorized functions are described in various textbooks and can be combined to describe more complex variograms [@goovaerts1997geostatistics].
+
+A mentioned above, under certain circumstances, the variogram levels off for a certain distance, referred to as the range $b$. When $h$ reaches $b$ the semivariance value is maximum and remains constant. Such variograms are referred to as bounded variograms. The plateau is called the $sill$ in the geostatistical jargon and corresponds to the variation picked up by the sampling scheme. 
+The $sill$ variance is the sum of two terms corresponding to the part of the variance that is explained by the spatial structure of the variable (referred to as $C_1$, the _spatial_ variance or _partial sill_) and an additional term accounting for residual (non spatial) variance referred to as nugget variance $C_0$ (a term derived from the gold mining jargon)(figure \ref{vartheo} page \pageref{vartheo}). The nugget variance $C_0$ encapsulates various sources of variability that are perceived as being spatially independent, *i.e.* that are not autocorrelated at the scale of the study.  When there is no spatial structure, the variogram is horizontal and $\hat{\gamma}(h) = C_0$. Such variograms are referred to as 100% nugget models.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=10cm]{fig/vartheo.png}
+\caption[Characteristic features of variogram]{Characteristic features of the variogram: range ($a$), nugget variance ($C_0$) and partial sill ($C_1$).}
+ \label{vartheo}
+\end{figure}
+
+Fitting theoretical variogram to empirical values has given rise to an important literature and is achieved by using generalized least-squares fitting [@goovaerts1997geostatistics] and maximum likelihood (_e.g._ Akaike information criteria Webseter and Oliver [-@Webster1990]). 
+In practice, theoretical variogram models are fitted to empirical variograms and the model parameters furnish estimates of the partial sill, the range ($a$) and the $nugget$ variance ($C_0$). Variogram parameters are directly interpretable in terms of strength and extent of the spatial structure. For example, the ratio of the term $C_1$ to the sum $C_0 + C_1$ provides a measure of the proportion of variance that is spatially dependent. The $range$, $b$, indicates the separating geographic distance beyond which observations are statistically independent. This is an important issue when designing sampling schemes [@Webster1990].     
+
+## The exponential model
+Some authorized functions are commonly encountered in the geostatistical literature *e.g.* spherical, gaussian or exponential models. We will only consider here the exponential model [@wagner2005variogram]. It is defined by :
+
+\begin{equation}
+\gamma(h)= C \left(1- \exp(\frac{-h}{r}) \right)
+\end{equation}
+where $C$ is the asymptote (sill) and $r$ a distance parameter controlling the spatial extent of the function. In practice, a nugget term $C_0$ is added to the equation when theoretical models are fitted to empirical variograms. 
+
+Exponential models are bounded [@goovaerts1997geostatistics] and approach their $sill$ asymptotically hence there is no $range$ strictly speaking. For practical purposes, however, a effective range $b=3r$ at which $\gamma(a) = 0.95C$ is defined [@Webster1990].
+
+## Variogram of gene diversity
+The analysis of spatial genetic structure (SGS) has hitherto mostly involved correlograms and Mantel tests [@Hardy1999] or geostatistical analysis of allelic frequencies [@LeCorre1998]. Geostatistical exploration of genetic diversity is rare [@dutech2008geostatistical;@Werth2006;@wagner2005variogram] and limited to haploid organisms.
+
+Wagner et al. [-@wagner2005variogram] showed how variograms could be related to gene diversity so as to express SGS of continuous populations. If we consider a set of $k$ dummy variables $z_k$ for $k$ alleles with $z_{ka}=1$, $z_{ka}=0.5$ or $z_{ka}=0$ if individual $a$ is homozygous, heterozygous or does not bear allele $k$, respectively. The proportion of unlike joins between individuals equals the sum of the variograms of the dummy variables. Wagner et al. [-@wagner2005variogram] showed that the variogram of multilocus gene diversity $\hat{H}$ (or expected heterozygosity) can be defined as:
+
+\begin{equation}
+\hat{H}(h)=\sum_{l=1}^{L}\omega_l\hat{\gamma}_l(h)=
+ \sum_{a \neq b} 
+\sum_{l=1}^{L} \sum_{k}
+\frac{\omega_l \chi_{ab}^{(h)}}{2n_h}
+\left(z_{lka} - z_{lkb} \right)^2
+\end{equation}
+
+where $z_{lka}$ and $z_{lkb}$ are the dummy variables for locus $l$ allele $k$ for individuals $a$ and $b$, $\chi_{ab}^{(h)}$ is the Kronecker weight, $\omega_l=\frac{1}{L}$ is the weight of locus $l$ with $L$ the number of locus and $n_h$ the number of data pairs separated by a distance of $h$.  
+
+## Isolation by distance and the exponential variogram model
+Under isolation--by--distance (*i.e.* limited gene dispersal) in a two-dimensional space, theoretical models predict that kinship between individuals (as well as pairwise $F_{st}$)  decreases approximately linearly with the logarithm of the separating distance [@Hardy1999]. The probability of identity of two neutral genes separated by a distance $r$, $Q(r)$ depends on a gene dispersal function, the mutation rate ($\mu$)  and the population effective density $D$ under the assumption of an isotropic dispersal and at drift--dispersal--mutation equilibrium [@vekemans2004new]. 
+Interestingly, $Q(r)$ is approximately linearly related to $ln(r)$ (in two dimensions) at a rate proportional to $1/D\sigma^2$ for $r$ values ranging between $\sigma$ and $0.5\sigma/\sqrt{2\mu}$
+with $\sigma^2$, half the average squared axial parent--offspring distance.
+
+The classical approach [@vekemans2004new] consists of  regressing the relatedness coefficient $F(r)$ on $log (r)$ and estimating the slope $\hat{b}_F$ which depicts the SGS. This estimation must be done for $r$ ranging between $\sigma$ and $0.5\sigma/\sqrt{2\mu}$. An additional index, the $Sp$ statistic, has been proposed to characterize the SGS [@vekemans2004new]. It is:
+
+\begin{equation}
+S_p= \frac{b_F}{(1 - F_N)}
+\end{equation}
+
+where $F_N$ is the kinship of immediate neighbors that compete for the same resources. $F_N$
+can be estimated by $F(1)$, the value of $F(r)$ for the first distance class.
+
+The $S_p$ statistic is directly related to dispersion parameters (under former hypotheses of IBD and equilibrium) 
+
+\begin{equation}
+S_p= \frac{1}{4 \pi D\sigma^2}
+\end{equation}
+
+Whereas $S_p$ is usually estimated using Moran's $I$ correlogram, the exponential variogram model fitted to empirical values of $\hat{\gamma}(h)$ provides alternate estimates of these statistics [@wagner2005variogram]. $F_N$ can be estimated by the ratio of the term $C_1$ to the $sill$ ($C_0 + C_1$): 
+
+\begin{equation}
+\hat{F}_N= \frac{C_1}{C_0 + C_1}
+\end{equation}
+
+If an estimate of $F(1)$ is required, the exponential variogram model must be fitted  under the constraint of having a fixed nugget parameter $C_0 = \hat{\gamma}(h=1)$.
+
+The slope parameter $b_F$ is closely related to the range parameter of the variogram. Because the exponential model reaches its $sill$ asymptotically, the effective range must be used to estimate $b_F$ [@wagner2005variogram]:
+
+\begin{equation}
+b= \frac{-3}{\hat{b}_F}
+\end{equation}
+
+Exponential model parameters allow to estimate of the index $S_p$ and hence to the estimation of the dispersal parameter known as the average axial parent--offspring distance. 
+
+## What does `ggene` actually compute? 
+The package provides different functions allowing the estimation of the variogram and a function (`fitsvariog`) dedicated to exponential model fitting to empirical variograms. It provides an estimate of the parameters listed above.
+`ggene` also allows to compute statistical envelope of the variogram on the basis of random permutations of the genetic data. Two functions provide tools to examine anisotropy. In addition, the package offers some functions allowing to compute the omnidirectional variogram while accounting for the presence of recurrent genotypes following the approach proposed in Wagner et al. [-@wagner2005variogram].
+
+# En route for variography
+
+*"If you're going through hell, keep going."*
+
+Winston Churchill.
+
+## Distance interval to be considered in variography
+
+### Distance lags, maximum distance and number of data pairs
+
+The first step to variography is selecting _ad hoc_ distance classes. This means choosing a distance lag (also called distance interval or lag width) and a maximum distance value to be considered. Individuals separated by a distance larger than this threshold won't be evaluated. Large distance intervals will thus tend to smooth out local details while small distance intervals may obscure the underlying signal (if any) with too much local "noise". The maximum distance to be accounted for is another important aspect of empirical variograms [@Webster1990]. Values larger than 1/3 or 1/2 of the maximum inter-sample distance are generally the maximum considered [@Journel1978; @isaaks1989applied; @Webster1990] but this is mostly because empirical variograms are used with the aim of fitting a theoretical model ultimately used for interpolation purposes named kriging in geostatistics [@goovaerts1997geostatistics]. This is not our aim when we study genetic variation and the whole variogram is of interest. It should be noted, however, that the largest (or lowest) distance classes may involve only a few data couples which means that the estimate of the semivariance is poor. The number of data pairs involved in semivariance computation highly depends on the sampling scheme. It must be noted that in genetic survey sampling scheme can be very dependent on natural population spatial pattern while in geology or soil science researchers often use regular schemes. Caution is therefore needed and it is good practice to check the number of data pairs and possibly change the distance interval accordingly. Finally, the sampling scheme is obviously determinant in the distribution of the information along distance classes and therefore each analysis shall be devised according to sampling scheme. Homogeneous sampling schemes are to be preferred and in case of uneven distribution of individuals, users are advised to check the number of data pairs involved in each semivariance estimation. 
+In environmental sciences, geostatistics are often used to analyse data collected following a regular sampling scheme. One advantage is that the number of data pairs per lags decreases more regularly when the distance lag is increased. Random or clumped schemes requires that users be very cautious when interpreting the variogram, particularly for large (small) intersample distances.
+
+### The function `distlag`
+
+The function `distlag` allows to quickly build a vector showing the midpoint of the distance classes to be used in variography _i.e._ study of the variogram. `distlag` uses either a set of individual coordinates or an inter-individual euclidean distance matrix. Note that the coordinates (hence the distances derived from) must be defined in a plane. This means that longitude and latitude data, which are recorded in degrees and associated with an ellipse, shall be expressed according to the adequate coordinate reference system (CRS) and projected onto a plane. Readers are referred to the book of Bivand et al. [-@Bivand2008, chapter 4] that provides precious details regarding this point. `distlag` operates with 3 arguments and allow customizing the resulting distance intervals: `dmin` indicates the minimum distance to be accounted for, `distance.lag` indicates the intersample lag distance and `dist.lag.max` denotes the maximum intersample distance to be considered. The function returns a vector that can be passed to other functions of the package such as `svariog` for computation of the semi-variogram.
+
+```{r, fig.align="center"}
+data(aniso)
+distlag(dist=aniso$coord, dmin=0, distance.lag=2, dist.lag.max=NULL)
+```
+
+By default, `distlag` considers all the possible distance classes. It is sometimes useful, however, to restrict the range of the distance classes to get a better view of the spatial structure near the origin. This point is important for instance when the zone of influence of the structure is short with regards to the size of the study area and/or if a model must be fitted very accurately for the very first lags (_i.e._ lower than the variogram range).
+
+```{r, fig.align="center"}
+distlag(dist=aniso$coord, dmin=0, distance.lag=2, dist.lag.max=20)
+```
+
+Changing the width of the distance increment has a strong impact on the number of data pairs involved in computations. This can in turn affect the semivariance estimates. The following example shows how increasing the width from 1 meters to 2 meters affects the number of pairs of individuals involved in the semivariance estimations.  
+
+
+```{r}
+d <- distlag(dist=aniso$coord, dmin=0, distance.lag=1, dist.lag.max=20)
+d
+d1 <- distlag(dist=aniso$coord, dmin=0, distance.lag=2, dist.lag.max=20)
+d1
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# compute omnidirectional and directional variograms
+va <- svariog(X=aniso, plot=F, uvec=d)
+va1 <- svariog(X=aniso, plot=F, uvec=d1)
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width = 6, fig.height = 6, fig.align="center"}
+plot(va1$svario$u, va1$svario$n, type="h", xlab="centre of distance classes (m)", 
+     ylab="number of data pairs per distance class", lwd=2, ylim=c(0,15000),
+     axes=FALSE)
+points(va$svario$u, va$svario$n, type="h", col="red", lwd=2, lty="dotted")
+axis(side=1, at = 1:20, labels = 1:20, tick = TRUE, line = NA)
+axis(side=2, at = seq(from=0, to=15000, by=1000), labels = seq(from=0, to=15000, by=1000))
+legend("topright", legend=c("distance increment = 1 m", "distance increment = 2 m"), 
+       lty=c("solid", "dotted"), col=c("black", "red"), bty="n", cex=1, lwd=2)
+```
+
+We shall return to this issue when dealing with variogram computation and model fitting.
+
+## Computing omnidirectional empirical variogram
+
+As would be expected, the *pièce de résistance* of the package `ggene` is its functions allowing variography. `ggene` has 3 functions dedicated to semivariance computation: `svariog`, `varioWeight` and `svarmap`. 
+
+- `svariog` computes the variogram for the gene diversity (termed $\hat{H}(h)$ in Wagner et al. [-@wagner2005variogram]). The function also returns the locus-by-locus semivariance and the conventional estimator of the gene diversity $\hat{H}(h)$. It also implements directional variograms (see below).
+
+- `varioWeight` computes omnidirectional variograms and allows accounting for clonality following the weighting scheme proposed in Wagner et al. [-@wagner2005variogram]. We saw earlier how the functions `genocount` and `genoweight` could be used to compute weighting matrix which, in turn, can feed the function `varioWeight` to compute the weigthed variogram.
+
+- `svarmap` computes the variogram map _aka_ variogram surface [@isaaks1989applied, p. 149]. The method, although rarely used even in the field of geology where it was originally developed, is an effective way to search for anisotropy axes. 
+
+### The _Larix decidua_ example
+
+#### The sampling scheme and the distance lag
+As seen before, omnidirectional variograms are computed without accounting for directional variation. We will start by examining the example dataset called `larix2300` which provides a set of 13 micosatellite locus recorded for 175 individual trees located in an experimental plot at an altitude of 2300 m asl. in the French Alps [@nardin2015genetic].
+
+```{r, fig.align="center"}
+data(larix2300)
+```
+
+A quick examination of their spatial distribution reveals that the trees are spatially clumped. Such a pattern originates from various ecological processes and deserves a study in its own right [@Rossi2014]. 
+
+```{r, fig.align="center"}
+plot(larix2300$coord[,1],larix2300$coord[,2], asp=1, xlab="x", ylab="y")
+```
+
+Note that the argument `asp` was set to 1 when calling the function `plot`. `asp` controls the `y/x` aspect ratio and a value of 1 ensures that one data unit in the `x` direction is equal in length to one data unit in the `y` direction (see `plot.default`).
+
+Because trees form small patches, many individuals are clumped and a sizeable amount of genetic information occurs at short spatial scales. We therefore want to explore the spatial genetic variation with small separating lags because if the lags were too large, local features might be smoothed out.
+
+Again, `distlag` allows to customize the distance intervals:
+
+```{r, fig.align="center"}
+d <- distlag(dist=larix2300$coord, dmin=0, distance.lag=1)
+d
+```
+
+We now estimate the variogram using `d` as the separating distance:
+
+```{r, fig.align="center"}
+va <- svariog(X=larix2300, uvec=d, plot=FALSE)
+plot(va$svario$u, va$svario$v, type="p", xlab="distance (m)",
+     ylab="semivariance")
+```
+
+Note that when `plot=TRUE` a basic variogram is plotted. **From this plot, the main features of the variogram can be seen.**
+
+#### General shape of the empirical variograms
+The semivariance increases with increasing inter-individual distance until it reaches a plateau and remains more or less constant. At very large distances (_e.g._ >15 m in our case) the gene diversity may fluctuate as the result of sampling effects: the number of data pairs (tree couples involved in the semivariance estimation) is often much smaller for large separating distances. Obviously, this depends on the spatial distribution of individuals. In the case of the `larix` dataset, almost all trees have been investigated and as such the sampling scheme largeley conveys the natural distribution of the trees which is clumped. 
+
+#### A glance at the scale(s): the variogram range(s)
+A very interesting feature of the variogram is the distance at which it reaches a plateau. It is referred to as the range of the variogram and provides an information about the spatial scale at which the structure occurs. Individuals separated by a distance lower than the range are considered as statistically independent. Below that range, individuals are more similar than expected by chance. Consequently, if one wants to set up a sampling scheme where individuals are expected to be independent, they must be separated by a distance larger than or equal to the range. This has been discussed in details in various papers and text books [@Oliver2010; Webster1985; @Webster1990]
+
+#### Playing with the lag distance
+Increasing the lag increment smooths out local variability which is sometimes very useful to get a better picture of the global pattern. Various trials are generally necessary to get a clear view of different scales at which the spatial variation occurs. In the case of `larix2300` we can increase the lag distance:
+
+```{r, fig.align="center"}
+va1 <- svariog(X=larix2300, uvec=distlag(dist=larix2300$coord, dmin=0,
+                                         distance.lag=1), plot=FALSE)
+va2 <- svariog(X=larix2300, uvec=distlag(dist=larix2300$coord, dmin=0,
+                                         distance.lag=2), plot=FALSE)
+va4 <- svariog(X=larix2300, uvec=distlag(dist=larix2300$coord, dmin=0,
+                                         distance.lag=4), plot=FALSE)
+va8 <- svariog(X=larix2300, uvec=distlag(dist=larix2300$coord, dmin=0,
+                                         distance.lag=8), plot=FALSE)
+
+plot(va1$svario$u, va1$svario$v, xlab="distance", ylab="semivariance")
+plot(va2$svario$u, va2$svario$v, pch=2, xlab="distance", ylab="semivariance")
+plot(va4$svario$u, va4$svario$v, pch=3, xlab="distance", ylab="semivariance")
+plot(va8$svario$u, va8$svario$v, pch=4, xlab="distance", ylab="semivariance")
+```
+
+Not only larger increments lead to smoother variograms but they also help detect more or less hidden structures. Here, increments of 8 m lead to a variogram exhibiting a clear structure at distances ranging from 0 to _ca._ 60 m **superimposed** upon another structure at larger scales correponding to the increase in semivariance from 60 m. The topic of superimposed structures and how variograms can be of help in their detection and characterization has been adressed in several papers [@Burrough1983; @Bellier2007; @Jimenez2014] and will be delt in more details later. For the moment, we need to make sure that the second phase of semivariance increase is not solely due to sampling effect _i.e._ lower number of data pairs for larger separating distances.
+
+`svario$n` allows checking that the number of data pairs involved is sufficient:
+
+```{r}
+va1$svario$n
+va8$svario$n
+```
+
+A commonly accepted threshold for the minimum number of data pairs is 50 [@Journel1978]. We see that an interval of 1 m leads to a relativeley small number of pairs of individuals both for the lower (1 m) and higher (8 m) separating distances. These results illustrate how distance increment affects our perception of the spatial pattern at hand. It can also noticeably impact model fitting as we will see later.
+
+#### Locus-by-locus variograms
+
+The variogram is the sum of the semivariance estimated for each locus. It may be useful, in some cases, to examine if the spatial signal changes according to the locus considered. This is possible with the slot `$bylocus` returned by the function `svariog` where the semivariance computed for each locus is stored.
+
+```{r, fig.width = 6.0, fig.height = 5.0, fig.align="center"}
+# compute variogram
+va <- svariog(X=larix2300, uvec=distlag(dist=larix2300$coord, dmin=0,
+  distance.lag=3), plot=FALSE)
+
+# plot semivariance locus by locus
+va <- svariog(X=larix2300)
+plot(va$svario$u,va$bylocus[[1]]$gamma.by.locus, xlab="distance",
+  ylab="semivariance", type="n", ylim=c(0,0.5))
+  cols <- rainbow(length(va$bylocus))
+
+for(i in 1:(length(va$bylocus))){
+  points(va$svario$u,va$bylocus[[i]]$gamma.by.locus, type="l", col=cols[i])
+  }
+legend("bottomleft", legend=larix2300$locnames, col=cols, bty="n", lty=1,
+  ncol=3)
+```
+
+
+### Departure from randomness: more _Larix decidua_!
+
+#### Statistical envelopes
+
+`larix1350` provides another example dataset of *Larix decidua* trees. Here, trees were surveyed at lower altitudes (ca.1300 m asl.). Let's see if we can detect a spatial structure within this dataset:
+
+```{r, fig.align="center"}
+data(larix1350)
+# examine sampling scheme
+plot(larix1350$coord[,1],larix1350$coord[,2], xlab="x", ylab="y", asp=1)
+```
+
+```{r, fig.align="center"}
+va <- svariog(X=larix1350, uvec=distlag(dist=larix1350$coord, 
+                           dmin=0, distance.lag=3), plot=FALSE)
+plot(va$svario$u, va$svario$v, type="p", xlab="distance (m)",
+     ylab="semivariance")
+```
+
+
+The resulting variogram appears to be somewhat flat, thus indicating that the semivariance (gene diversity) is not changing much with increasing separating distance. Such signal suggests an absence of spatial genetic structure (SGS) and various factors can explain such a lack of structuration [@nardin2015genetic]. The question remains to determine if an empirical variogram is significantly different from what can be expected by chance. `ggene` comes with the function `randsvariog` that performs randomizations of the genotype spatial distribution and recomputes the variogram from the randomized datasets. Readers are referred to Legendre and Legendre [-@Legendre1998] for details about randomization tests in the context of spatial analyses. `randsvariog` randomizes the genetic data associated to each individual. Note that genomes are not changed, only their spatial distribution are permuted between individuals, hence the sampling design is kept unchanged.
+
+```{r, fig.align="center"}
+env <- randsvariog(var=va, X=larix1350, nsim=30, bounds=c(0.025, 0.975),
+                   save.sim=FALSE)
+```
+
+The randomizations are used to compute the bounds of the statistical envelope for the observed semivariance. The graphical output is simply obtained with:
+
+```{r, fig.align="center"}
+plot(env$svario$u, env$svario$v, ylim=range(env$env),
+     xlab="distance", ylab="semivariance")
+points(env$svario$u, env$env[,1], type="l")
+points(env$svario$u, env$env[,2], type="l")
+```
+
+The results show that most of the observed values lie between the the 2.5% and 97.5% bounds suggesting the absence of significant departure from spatial randomness. The number of permutations was kept low in this simple example. More randomizations would be necessary and different tests using various distance increments would be useful to fully investigate the presence of a SGS.
+
+#### Notes on statistical testing
+When the argument `save.sim = TRUE`, `randsvariog` returns a `data.frame` with all the simulated semivariances for the different distance classes. The data are provided in the slot `$simul` and they can be used to compute new envelope bounds *i.e.* for new quantile values without redoing the randomizations themselves. For example, the code below computes the variogram for the dataset `sim03` and the corresponding enveloppe for 30 randomizations and the quantile values of 0.025 and 0.975.
+
+```{r, fig.align="center"}
+data(sim03)
+var <-svariog(X=sim03, plot=FALSE)
+plot(var$svario$u, var$svario$v, xlab="distance", ylab="semivariance")
+env <-randsvariog(var=var, X=sim03, nsim=30, bounds=c(0.025, 0.975), 
+  save.sim=TRUE)
+```
+
+The semivariance after randomization, which mimics the expected values under the null hypothesis of complete spatial randomness, are returned in `env$simul`:
+
+```{r, fig.align="center"}
+dim(env$simul)
+```
+
+The `data.frame` has a number of rows equal to the number of distance lags and a number of columns corresponding to the number of randomizations. From this `data.frame` we can compute new values describing the variability of the randomized values. Here we compute and plot the minimum, the maximum and the median values:
+
+```{r, fig.align="center"}
+min <- apply(X=env$simul, MARGIN=1, FUN=min)
+median <- apply(X=env$simul, MARGIN=1, FUN=median)
+max <- apply(X=env$simul, MARGIN=1, FUN=max)
+
+plot(var$svario$u, var$svario$v, xlab="distance", ylab="semivariance")
+points(env$svario$u, min, type="l", lty="dotted", col="red", lwd=2)
+points(env$svario$u, median, type="l", lty="dotted", col="blue", lwd=2)
+points(env$svario$u, max, type="l", lty="dotted", col="green", lwd=2)
+```
+
+What happens if we select quantile values equal to 0.025 and 0.975 ?
+
+```{r, fig.align="center"}
+q1 <- apply(X=env$simul, MARGIN=1, FUN=quantile, prob=0.025)
+q2 <- apply(X=env$simul, MARGIN=1, FUN=quantile, prob=0.975)
+
+plot(var$svario$u, var$svario$v, xlab="distance", ylab="semivariance")
+points(env$svario$u, q1, type="l", lty="dotted", col="red", lwd=2)
+points(env$svario$u, q2, type="l", lty="dotted", col="blue", lwd=2)
+```
+
+We now plot the output of `randsvariog` computed for these quantiles and stored in `$env[]` :
+
+```{r, fig.align="center"}
+plot(var$svario$u, var$svario$v, xlab="distance", ylab="semivariance")
+points(env$svario$u, q1, type="l", lty="dotted", col="red", lwd=2)
+points(env$svario$u, q2, type="l", lty="dotted", col="blue", lwd=2)
+
+points(env$svario$u, env$env[,1], type="l")
+points(env$svario$u, env$env[,2], type="l")
+```
+
+The curves are superimposed.
+
+#### Remarks on flat variograms
+The variogram for `larix1350` is an example of what is called a _horizontal_ variogram. There is no significant change in the semivariance as the average inter-individual distance increases. It means that individuals are independent from a statistical viewpoint. Interestingly, this situation is also observed when a SGS is present but when we consider data couples separated by a distance *larger* than the variogram range. When the empirical variogram appears to be flat, users should try to decrease the lag and examine the behavior of the semivariance for the first distance lags alone to make sure that short-scale patterns are not obscured. The statistical envelopes may also be of help to determine if a structure is present. 
+
+### Accounting for recurrent genotypes
+
+#### Computing weighted empirical variogram
+
+In its present form, `ggene` allows to account for repeated genotypes in omnidirectional variogram analysis alone. The option may become available for directional variograms in the future. As stated by Wagner et al. [-@wagner2005variogram], the principle of the analysis is to compute the variogram while decreasing the weight given to data couples including individuals whose genotype is repeated. Practically, this is achieved through the computation of a weighting matrix that is passed to the function `varioWeight`. We saw above (§ 3.4) how that so-called matrix of weights is computed using functions `genocount` and `genoweight`.
+
+The function returns a variogram reflecting the SGS after weithing for repeats following the proposal of Wagner et al. [-@wagner2005variogram]. Suppose that a significant SGS is observed for a given dataset where a certain degree of clonality is observed. The weighted variogram indicates if the SGS is solely due to the spatial distribution of repeated genotypes or if it conveys another source of variability.
+
+We illustrate this analysis using a dataset named `crypho` consisting in  a set of 10 locus for 276 individuals of the chestnut blight fungus _Cryphonectria parasitica_ (CBF) [@dutech2008geostatistical]. This organism is haploid and a certain level of clonality is observed [@dutech2008geostatistical]. 
+
+We first compute the number of different genotypes using `genocount`:
+
+```{r, fig.align="center"}
+data(crypho)
+# check sampling scheme
+plot(crypho$coord[,1],crypho$coord[,2], xlab="x", ylab="y", asp=1)
+```
+
+```{r, fig.align="center"}
+count <- genocount(X=crypho)
+count$n
+```
+
+A total of 92 genotypes is present in the dataset. We then compute the matrix of weights:
+
+```{r, fig.align="center"}
+mat <- genoweight(X=crypho,genotyp=count$vec)
+class(mat)
+dim(as.matrix(mat))
+```
+
+The output of `genoweight` is an object of class `dist`. It corresponds to a matrix of 276 $\times$ 276, the number of individuals in the dataset. 
+The weighted variogram is computed as follows:
+
+
+```{r, fig.align="center"}
+d <- distlag(dist=crypho$coord, dmin=0,distance.lag=50)
+d
+wva <- varioWeight(X=crypho, weights=mat,  uvec=d)
+```
+
+`varioWeight` returns both the semivariance with and without weighting for recurrent genetypes. The regular semivariance is returned under the slot `$gamma` (`wa$svario$gamma` in the example). It is strictly similar to the values returned by the function `svariog`. semivariance for weighted dataset is given in the slot `$v` (`wa$svario$v` in the example above).
+
+We can plot the variograms:
+
+```{r, fig.align="center"}
+#plot the weighted variogram
+plot(wva$svario$u, wva$svario$gamma, col="black", type="b",
+     ylim=range(c(wva$svario$gamma,wva$svario$v)), pch=16,
+     xlab="distance", ylab="semivariance")
+#add the variogram for raw data
+points(wva$svario$u, wva$svario$v, col="red", type="b", pch=15,
+       lty="dotted")
+
+legend("top", legend=c("raw", "weighted"), col=c("black", "red"),
+       pch=c(16,15), lty=c("solid", "dotted"), bty="n")
+```
+
+We can also use the function `svariog`:
+
+```{r, fig.align="center"}
+va <- svariog(X=crypho, uvec=d, plot=FALSE)
+```
+
+The resulting variogram is similar to the object returned by `varioWeight`:
+
+```{r, fig.align="center"}
+#plot the weighted variogram
+plot(wva$svario$u, wva$svario$gamma, col="black", type="b",
+     ylim=range(c(wva$svario$gamma,wva$svario$v)), pch=16,
+     xlab="distance", ylab="semivariance")
+#add the variogram for raw data
+points(wva$svario$u, wva$svario$v, col="red", type="b", pch=15,
+       lty="dotted")
+
+legend("top", legend=c("raw", "weighted"), col=c("black", "red"),
+       pch=c(16,15), lty=c("solid", "dotted"), bty="n")
+
+points(va$svario$u, va$svario$v, col="green", type="b", pch=3, bg="green")
+```
+
+From this figure it is obvious that weighting for reccurrent genotypes has a strong impact on the resulting variogram. The weighted variogram shows a very low amount of struture and possibly no SGS at all. 
+
+#### Statistical envelopes for weighted variograms: the argument `weights` of `svariog`
+
+The example below shows how to compute the weighted variogram for the dataset `crypho`
+ and how to perform randomization of the weighted semivariance. Users must provide the weighting matrix as the argument `weights` in addition to an object of the class `ggene`.
+
+```{r, fig.align="center"}
+#compute the weights
+count <- genocount(X=crypho)
+mat <- genoweight(X=crypho,genotyp=count$vec)
+
+#performs the randomizations on raw variogram
+va <- svariog(X=crypho, plot=FALSE)
+env <- randsvariog(var=va, X=crypho, nsim=9, bounds=NULL, 
+                   save.sim=FALSE)
+
+#compute the weighted variogram
+wva <- varioWeight(X=crypho, weights=mat)
+
+#performs the randomizations on weighted variogram
+env2 <- randsvariog(var=wva, X=crypho, nsim=9, bounds=NULL, 
+                    save.sim=FALSE, weights=mat)
+
+```
+
+```{r, fig.width = 5.5, fig.height = 4.5, fig.align="center"}
+#draw the variogram (raw and weighted) and their envelopes
+plot(wva$svario$u, wva$svario$gamma, type="b", col="black")
+points(env$svario$u, env$env[,1], type="l", col="black")
+points(env$svario$u, env$env[,2], type="l", col="black")
+
+points(wva$svario$u, wva$svario$v, col="blue", type="b", 
+       ylim=range(c(wva$svario$gamma,wva$svario$v)))
+points(env2$svario$u, env2$env[,1], type="l", col="blue")
+points(env2$svario$u, env2$env[,2], type="l", col="blue")
+legend("top", legend=c("raw", "weighted"), col=c("black", "blue"),
+       lty="solid", bty="n")
+```
+
+```{r, fig.width = 5.5, fig.height = 4.5, fig.align="center"}
+# same but another style...
+xx <- c(wva$svario$u, rev(wva$svario$u))
+yy <- c(env$env[,1], rev(env$env[,2]))
+plot(xx, yy, type = "n", xlab = "distance", ylab = "semivariance",
+     ylim=c(0.5,0.75))
+polygon(xx, yy, col = "lightgrey", border = "black")
+xx <- c(wva$svario$u, rev(wva$svario$u))
+yy <- c(env2$env[,1], env2$env[,2])
+points(xx, yy, type = "l")
+polygon(xx, yy, col = "lightblue", border = "blue")
+
+points(wva$svario$u, wva$svario$v, col="blue", typ="b")
+points(wva$svario$u, wva$svario$gamma, col="black", type="b")
+legend("top", legend=c("raw", "weighted"), col=c("black", "blue"),
+       lty="solid", pch=1, bty="n")
+```
+
+We can conclude that repeated genotypes and the way they are spatially distributed is the main source of SGS in this dataset [@dutech2008geostatistical].
+
+## Fitting models to the empirical variogram
+There is a wealth of literature dedicated to model fitting in geostatistics [@McBratney1986;@Journel1978; @isaaks1989applied; @Webster1990; @goovaerts1997geostatistics]. Basically, one of the authorized functions is fitted to the empirical variogram. The model parameters provide interesting information on the spatial structure at hand. They are also used for interpolation by kriging algorithm, a point that is beyond the scope of the present document. Wagner et al. [-@wagner2005variogram] showed that under certain assumptions, fitting an exponential model to the empirical variogram provides a summary of the SGS. In `ggene`, model fitting is realized by the function `fitsvariog`. It returns the usual variogram parameters (partial sill, nugget variance, range, practical range, see _e.g._ Goovaerts [-@goovaerts1997geostatistics]) as well as the indices developped specifically with the aim to characterize the SGS ($F_N$, $b_f$ ans $S_p$, [@vekemans2004new; @wagner2005variogram]).
+
+```{r, fig.align="center"}
+library(ggene)
+data(aniso)
+va <- svariog(X=aniso, plot=FALSE)
+fit <- fitsvariog(vario=va, ini.cov.pars=c(0.05,4.5),
+                  nugget=0.5, max.dist=200, plot = TRUE)
+```
+
+The red dotted line indicates the conventional estimation of the variance (gene diversity) $\hat{H}$. It is returned by `svariog`. The model parameters can be accessed by:
+
+```{r, fig.align="center"}
+fit$param
+```
+
+The object `fit` can be directly used with `lines` to plot the model:
+
+```{r, fig.align="center"}
+plot(va$svario$u, va$svario$v)
+lines(fit$fit)
+```
+
+The example above is based an a simulated dataset and the fit is very good. Let's now examine an empirical datset.
+
+```{r, fig.align="center"}
+data(crypho)
+va <- svariog(X=crypho, plot=TRUE, messages=FALSE)
+fit <- fitsvariog(vario=va, ini.cov.pars=c(0.05,4.5), nugget=0.5,
+                  max.dist=600, plot = TRUE)
+fit$param
+```
+
+The practical range is larger than 235 km ! We get another value if we reduce the maximum distance over which the fit is done.
+
+```{r, fig.align="center"}
+fit <- fitsvariog(vario=va, ini.cov.pars=c(0.05,4.5), nugget=0.5,
+                  max.dist=400, plot = TRUE)
+fit$param
+```
+
+The practical range is estimated as 393 m. 
+
+Let's reduce again the maximum distance over which the fit is done.
+
+```{r, fig.align="center"}
+fit <- fitsvariog(vario=va, ini.cov.pars=c(0.05,4.5), nugget=0.5,
+                  max.dist=300, plot = TRUE)
+fit$param
+```
+
+We get another value of ca. 330. This example illustrates how choosing the distance range over which the model is fitted can affect the model parameters. Why is this aspect so important in the case of _Cryphonectria parasitica_? 
+The empirical variogram shows the presence of a first plateau for distances ranging from ca. 100 m up to ca. 300 m but the semivariance increases again for larger distances. This means that SGS spotted at distance <300 m is nested into long-range pattern. Such pattern could be seen for example if local demographical processes create a local SGS itself superimposed on a longer range isolation by distance structure. Caution is needed as it is very difficult to infer a pattern from its summary by a structure function such as the variograms or the correlograms. Regarding fitting models, a good practice consists in fitting the model for the first distance classes and restrain the computation to values below the first half or third of the maximum distance. This is a rule of thumb commonly used in geostatistics [@isaaks1989applied; @Journel1978] that ensures that the fit is good at least for the most local structures, an important thing regarding kriging. 
+
+# Dealing with anisotropy
+
+Anisotropy is the property of being directionally dependent. It is opposed to isotropy. Anisotropy occurs if the spatial pattern differs, when measured along different axes, either in extent or intensity. **Geometric anisotropy** corresponds to situations where variograms have the same sill in all directions through their ranges are different. **Zonal (or stratified anisotropy)** occurs when sills are different according to the direction considered. `ggene` allows searching and charaterizing anisotropies of genetic variation either by computing the so-called directional variograms or by drawing variogram maps [@isaaks1989applied].
+
+## Directional variograms
+`svariog` computes omnidirectional variograms by default. The arguments `direction`, `tolerance` and `unit.angle` allow to define the main direction, the tolerance and the unit of measure for the angle. These arguments, along others, are passed to the function `variog` from package `geoR`. Users are referred to the documentation associated to this function for details on computation options and default values. 
+
+Computation of the directional variogram
+```{r, fig.align="center"}
+data(aniso)
+va <- svariog(X=aniso, plot=TRUE)
+```
+
+The omni-directional variogram reveals a clear spatial genetic structure. Does this SGS differ according to the main directional axes considered?
+We consider 4 directions : 0, 45, 90 and 135 degrees. The same tolerance of 22.5° is considered in each case.
+
+```{r}
+d0_225 <- svariog(X=aniso,direction=0, tolerance=22.5, 
+                  unit.angle="degrees")
+d45_225 <- svariog(X=aniso,direction=45, tolerance=22.5, 
+                   unit.angle="degrees")
+d90_225 <- svariog(X=aniso,direction=90, tolerance=22.5, 
+                   unit.angle="degrees")
+d135_225 <- svariog(X=aniso,direction=135, tolerance=22.5, 
+                    unit.angle="degrees")
+```
+
+The variograms can be plotted on the same graph:
+
+```{r, fig.width = 6.5, fig.height = 5.5, fig.align="center"}
+plot(va$svario$u, va$svario$v, type="b", ylim=range(c(va$svario$v, 
+  d0_225$svario$v, d45_225$svario$v, d90_225$svario$v, d135_225$svario$v))
+  ,xlab="distance", ylab="semivariance")
+
+points(d0_225$svario$u, d0_225$svario$v, type="b", lty=2)
+
+points(d45_225$svario$u, d45_225$svario$v, type="b", col="red", lty=2)
+
+points(d90_225$svario$u, d90_225$svario$v, type="b", col="blue", lty=2)
+
+points(d135_225$svario$u, d135_225$svario$v, type="b", col="green", lty=2)
+
+legend("topleft", legend=c("omnidirectional", expression(0 * degree), 
+    expression(45 * degree), expression(90 * degree), 
+    expression(135 * degree)), lty=c(1,2,2,2,2,2), 
+    col=c("black","black","red","blue","green"), bty="n")
+```
+
+From the plot, it can be seen that the semivariance is markedly lower in the direction 45°. The shape of the variogram is very similar but the magnitude differs. The example illustrates a case of zonal anisotropy.
+
+## Variogram maps
+
+Searching for directional anisotropies can also be achieved using a display called the variogram map _aka_ variogram surface [@isaaks1989applied, p. 149]. Pairs of individuals are constituted by gathering individuals whose separation in the $x$ direction is $h_x \pm \delta_x$ and whose separation in the $y$ direction is $h_y \pm \delta_y$. The grid considered has cells of width $\delta_x$ and a overall length called cutoff. 
+In `ggene`  the function `svarmap` computed variogram maps on the basis of a `ggene` object, a cutoff value (_i.e._ the maximum distance to be considered) and the width _i.e._ $\delta_x$ (only square cells are implemented which means that $\delta_x=\delta_y$)(figure \ref{aniso2} page \pageref{aniso2}).
+
+\begin{figure}
+\centering
+\includegraphics[width=12cm]{fig/aniso2.png}
+\caption[Grouping points to form a variogram map]{Grouping points to form a variogram map. Individuals at $B$ and all other individuals falling within the shaded area will be paired with the individual at $A$. The semivariance of all such pairs are averaged and plotted in a raster map.}
+ \label{aniso2}
+\end{figure}
+
+```{r, fig.align="center"}
+map <- svarmap(X=aniso,cutoff=20, width=1)
+plot(map)
+```
+
+As with the directional variograms, the variogram map reveals the presence of a direction for which the semivariance (here gene diversity) is lower (pink areas on the map). This direction is 45°. Note that the results of the analysis is particularly clear because the dataset `aniso` was simulated and as such exhibits a very strong pattern. Let's examine the variogram map for the empirical dataset `crypho`.
+
+```{r, fig.align="center"}
+map <- svarmap(X=crypho,cutoff=500, width=25)
+plot(map)
+``` 
+
+There is no clear directional pattern although pixels at the centre of the plot show lower semivariance values. This simply conveys the isotropic spatial structure identifed above. What happens when no struture is present *at all*? We can return to the `larix1350` dataset (for which no pattern was found) and compute the variogram map. 
+
+```{r, fig.align="center"}
+data(larix1350)
+map <- svarmap(X=larix1350,cutoff=90, width=5) ; plot(map)
+``` 
+
+We here see that there is no clear pattern part from lower values at the margin of the plot. These are probably associated to estimates based on few data pairs, which is a common feature of variograms. We will deal with this question below. 
+
+The value of the width parameter affects the grain of the outputs. Larger values smooth up the semivariance which can obscure our perception of the SGS. 
+
+```{r, fig.align="center"}
+map <- svarmap(X=crypho,cutoff=500, width=5)
+plot(map)
+``` 
+
+Cutoff value simply limits the extent of the analysis. Larger extents provide a more complete picture but require more computation time.
+
+```{r, fig.align="center"}
+map <- svarmap(X=crypho, cutoff=250, width=5)
+plot(map)
+``` 
+
+Whatever the values of `width` and `cutoff` there is no indication of anisotropy. Some cells may contain only few data pairs, this depends on the sampling scheme. Because those cells may contain unreliable semivariance values, they shall be removed. The parameter `threshold` (default value = 5) can be used for that purpose:
+
+```{r, fig.align="center"}
+plot(map, threshold = 10)
+``` 
+
+Semivariance values derived from a number of data pairs lower than the threshold are not printed on the map.
+
+# Aknowledgements
+
+We thank C. Dutech and P. Rozenberg who kindly provided the datasets for *Cryphonectria parasitica* and *Larix decidua*.
+
+# References
+

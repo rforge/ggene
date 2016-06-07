@@ -1,0 +1,14 @@
+exportPattern("^[[:alpha:]]+")
+##import("ape")# surtout ne pas importer tout le package ici sinon conflit
+importFrom(FactoMineR,tab.disjonctif.prop)
+importFrom(geoR,dup.coords,variog,as.geodata,jitterDupCoords,variofit)
+importFrom(spatstat,ppp,ripras,rotate,edges,plot.ppp,clickpoly)
+#importFrom(sp,coordinates)
+importFrom(gstat, variogram,gstat)
+importClassesFrom(adegenet,genind)
+importClassesFrom(sp,SpatialPixelsDataFrame)
+  importFrom("grDevices", "rainbow")
+  importFrom("graphics", "abline", "hist", "lines", "plot", "points")
+  importFrom("stats", "as.dist", "df", "dist", "na.omit", "quantile")
+  importFrom("utils", "packageDescription")
+

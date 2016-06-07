@@ -1,0 +1,39 @@
+Wagner                  The example data set used in Wagner et al
+                        (2005)
+aniso                   A simulated haploid genotypic data set
+                        exhibiting zonal anistropy
+crypho                  A haploid microsatellite dataset for the
+                        chestnut blight fungus _Cryphonectria
+                        parasitica_
+distlag                 Compute custom distance lags
+fitsvariog              Fit an exponential model to empirical variogram
+gene2geo                Creates a 'ggene' object from a 'genind' object
+                        and a coordinates data frame
+genocount               Identifies the different genotypes in a data
+                        set
+genoweight              Compute a matrix of weights accounting for
+                        recurrent genotypes
+ggene                   Semivariogram and exploratory spatial analysis
+                        of genetic data
+larix1350               A dataset corresponding to the microsatellite
+                        data for a set of 189 European larch trees
+                        _Larix decidua_ sampled in the French Alps at
+                        the altitude 1350 m asl
+larix2300               A dataset corresponding to the microsatellite
+                        data for a set of 175 European larch trees
+                        _Larix decidua_ sampled in the French Alps at
+                        the altitude of 2300 m asl
+randsvariog             Performs permutations and computes the
+                        variogram statistical envelope
+sim01                   A haploid genotypic data set simulated with the
+                        software IBDsim (Leblois et al 2009)
+sim02                   A haploid genotypic dataset simulated with the
+                        software IBDsim (Leblois et al 2009).
+sim03                   A haploid genotypic data set simulated with the
+                        software IBDsim (Leblois et al 2009)
+subsetdata              Extracts data subsets
+svariog                 Semivariogram computation
+svarmap                 Compute the variogram map for a genetic dataset
+tab2geo                 Create a 'ggene' object from data frames
+varioWeight             Variogram computation with weighting for
+                        recurrent genotypes
