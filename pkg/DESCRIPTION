@@ -6,13 +6,10 @@ Date: 2016-05-31
 Author: Jean-Pierre Rossi
 Maintainer: Jean-Pierre Rossi <ggene.package@gmail.com>
 Depends: R (>= 3.1.0)
-Imports: geoR, FactoMineR, adegenet (>= 2.0.0), spatstat, sp, gstat,
-        plotrix
+Imports: geoR, FactoMineR, adegenet (>= 2.0.0), spatstat, sp, gstat, plotrix
 Description: Semivariogram and spatial analysis of genetic data: semi-variance computation, model fitting, analysis of anisotropy. 
 License: GPL (>= 2)
 LazyData: true
-Suggests: knitr, rmarkdown
+Suggests: knitr,
+    rmarkdown
 VignetteBuilder: knitr
-NeedsCompilation: no
-Packaged: 2016-06-07 14:39:28 UTC; rossi
-Built: R 3.3.0; ; 2016-06-07 14:39:36 UTC; unix
